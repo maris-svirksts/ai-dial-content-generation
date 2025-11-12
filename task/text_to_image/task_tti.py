@@ -40,18 +40,70 @@ async def _save_images(attachments: list[Attachment]):
     #  1. Create DIAL bucket client
     #  2. Iterate through Images from attachments, download them and then save here
     #  3. Print confirmation that image has been saved locally
-    raise NotImplementedError
+    async with DialBucketClient(api_key=API_KEY, base_url=DIAL_URL) as client:
+        for attachment in attachments:
+            if attachment.url:
+                image_bytes = await client.get_file(attachment.url)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                file_name = f"generated_image_{timestamp}.png"
+                with open(file_name, 'wb') as f:
+                    f.write(image_bytes)
+                print(f"Image saved locally as: {file_name}")
 
 
 def start() -> None:
     # TODO:
     #  1. Create DialModelClient
+    client = DialModelClient(endpoint=DIAL_CHAT_COMPLETIONS_ENDPOINT, deployment_name="dall-e-3", api_key=API_KEY)
     #  2. Generate image for "Sunny day on Bali"
-    #  3. Get attachments from response and save generated message (use method `_save_images`)
+    messages = [
+        Message(
+            role=Role.USER,
+            content="Sunny day on Bali"
+        )
+    ]
+    
+    # Basic generation
+    response = client.get_completion(messages=messages)
+    print(response)
+    
+    if response.custom_content and response.custom_content.attachments:
+        #  3. Get attachments from response and save generated message (use method `_save_images`)
+        asyncio.run(_save_images(response.custom_content.attachments))
+    
+    # Try with custom_fields configuration
+    print("\n\n--- Trying with custom_fields (HD quality) ---\n")
+    custom_fields = {
+        "size": Size.square,
+        "quality": Quality.hd,
+        "style": Style.vivid
+    }
+    client_hd = DialModelClient(endpoint=DIAL_CHAT_COMPLETIONS_ENDPOINT, deployment_name="dall-e-3", api_key=API_KEY)
+    response_hd = client_hd.get_completion(messages=messages, custom_fields=custom_fields)
+    print(response_hd)
+    
+    if response_hd.custom_content and response_hd.custom_content.attachments:
+        asyncio.run(_save_images(response_hd.custom_content.attachments))
+    
     #  4. Try to configure the picture for output via `custom_fields` parameter.
     #    - Documentation: See `custom_fields`. https://dialx.ai/dial_api#operation/sendChatCompletionRequest
     #  5. Test it with the 'imagegeneration@005' (Google image generation model)
-    raise NotImplementedError
+    print("\n\n--- Trying with Google Imagen model ---\n")
+    # Google Imagen uses different parameters than DALL-E 3
+    # Supported parameters: sampleCount, sampleImageSize ("1K" or "2K"), aspectRatio, 
+    # enhancePrompt, personGeneration, safetySetting, addWatermark, seed, language
+    # https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api
+    custom_fields_google = {
+        "sampleCount": 1,
+        "sampleImageSize": "2K",
+        "aspectRatio": "1:1"
+    }
+    client_google = DialModelClient(endpoint=DIAL_CHAT_COMPLETIONS_ENDPOINT, deployment_name="imagegeneration@005", api_key=API_KEY)
+    response_google = client_google.get_completion(messages=messages, custom_fields=custom_fields_google)
+    print(response_google)
+    
+    if response_google.custom_content and response_google.custom_content.attachments:
+        asyncio.run(_save_images(response_google.custom_content.attachments))
 
 
 start()
